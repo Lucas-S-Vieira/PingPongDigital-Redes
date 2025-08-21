@@ -103,5 +103,5 @@ python cliente.py
 
 ## 👥 Autores
 
-- [Insira seu Nome Aqui]
-- [Insira o Nome do Colega Aqui, se aplicável]
+- Lucas Salgado Vieira
+- Mateus Rodrigues Gregorio
