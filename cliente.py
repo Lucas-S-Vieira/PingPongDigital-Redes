@@ -1,3 +1,4 @@
+# cliente.py (VERSÃO FINAL COM BOTÃO DE ATUALIZAR)
 import socket
 import threading
 import json
@@ -17,7 +18,10 @@ oponente_apelido = ""
 game_state = {}
 convite_de = None
 mensagem_fim_de_jogo = ""
-mensagem_contagem = ""
+
+# --- ALTERAÇÃO 1: Variáveis para a contagem regressiva dinâmica ---
+contagem_tempo_inicio = 0
+contagem_duracao = 0
 
 pygame.init()
 tela = pygame.display.set_mode((LARGURA_TELA, ALTURA_TELA))
@@ -61,7 +65,6 @@ def desenhar_lista_jogadores():
             botoes_jogadores[jogador['apelido']] = rect
             y_pos += 50
     
-    # --- NOVO: Desenha o botão de atualizar ---
     btn_atualizar = desenhar_texto("Atualizar Lista", fonte_pequena, COR_AZUL, LARGURA_TELA // 2, ALTURA_TELA - 50)
     
     return botoes_jogadores, btn_atualizar
@@ -127,7 +130,7 @@ def enviar_mensagem(dados):
         print("Erro de conexão ao enviar.")
 
 def receber_mensagens():
-    global estado_ecra, lista_jogadores, convite_de, game_state, meu_player_id, oponente_apelido, mensagem_fim_de_jogo, mensagem_contagem, conectado_ao_servidor
+    global estado_ecra, lista_jogadores, convite_de, game_state, meu_player_id, oponente_apelido, mensagem_fim_de_jogo, contagem_tempo_inicio, contagem_duracao, conectado_ao_servidor
     buffer = ""
     while conectado_ao_servidor:
         try:
@@ -145,8 +148,10 @@ def receber_mensagens():
                     if not dados['payload']['aceito']:
                         print(f"{dados['payload']['remetente']} recusou o seu convite.")
                         estado_ecra = 'ESCOLHENDO_JOGADOR'
+                # --- ALTERAÇÃO 2: Inicia o temporizador da contagem ---
                 elif dados['tipo'] == 'CONTAGEM_INICIO':
-                    mensagem_contagem = f"O jogo começa em {dados['payload']}..."
+                    contagem_duracao = dados['payload']
+                    contagem_tempo_inicio = pygame.time.get_ticks()
                     estado_ecra = 'CONTAGEM'
                 elif dados['tipo'] == 'JOGO_INICIADO':
                     meu_player_id = dados['payload']['id']
@@ -212,7 +217,6 @@ def main():
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if estado_ecra == 'MENU' and btn_jogar and btn_jogar.collidepoint(event.pos): estado_ecra = 'ESCOLHENDO_JOGADOR'
                 elif estado_ecra == 'ESCOLHENDO_JOGADOR':
-                    # --- NOVO: Verifica clique no botão de atualizar ---
                     if btn_atualizar and btn_atualizar.collidepoint(event.pos):
                         enviar_mensagem({'tipo': 'PEDIR_LISTA_JOGADORES'})
                     for apelido, rect in botoes_jogadores.items():
@@ -240,7 +244,16 @@ def main():
             botoes_jogadores, btn_atualizar = desenhar_lista_jogadores()
         elif estado_ecra == 'AGUARDANDO_RESPOSTA': desenhar_tela_espera("Aguardando resposta do oponente...")
         elif estado_ecra == 'CONVITE_RECEBIDO': btn_aceitar, btn_recusar = desenhar_convite()
-        elif estado_ecra == 'CONTAGEM': desenhar_tela_espera(mensagem_contagem)
+        # --- ALTERAÇÃO 3: Lógica de desenho da contagem regressiva ---
+        elif estado_ecra == 'CONTAGEM':
+            if contagem_tempo_inicio > 0:
+                tempo_passado = (pygame.time.get_ticks() - contagem_tempo_inicio) / 1000
+                tempo_restante = contagem_duracao - tempo_passado
+                if tempo_restante > 0:
+                    texto_a_mostrar = str(int(tempo_restante) + 1)
+                    desenhar_tela_espera(texto_a_mostrar)
+                else:
+                    desenhar_tela_espera("Começando!")
         elif estado_ecra == 'EM_JOGO': desenhar_jogo()
         elif estado_ecra == 'FIM_DE_JOGO':
             desenhar_tela_espera(mensagem_fim_de_jogo)
