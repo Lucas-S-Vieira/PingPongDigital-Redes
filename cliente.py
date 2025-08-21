@@ -1,3 +1,4 @@
+# cliente.py (VERSÃO FINAL COM CONEXÃO MANUAL POR IP)
 import socket
 import threading
 import json
@@ -9,8 +10,7 @@ servidor_encontrado = None
 LARGURA_TELA, ALTURA_TELA = 800, 600
 COR_BRANCA, COR_PRETA, COR_CINZA, COR_VERDE, COR_VERMELHO, COR_AZUL = (255, 255, 255), (0, 0, 0), (100, 100, 100), (0, 255, 0), (255, 0, 0), (0, 100, 255)
 
-# --- ALTERAÇÃO 1: Novo estado inicial e variáveis ---
-estado_ecra = 'TELA_CONEXAO' # 'TELA_CONEXAO', 'PROCURANDO_SERVIDOR', 'DIGITANDO_IP', ...
+estado_ecra = 'TELA_CONEXAO'
 ip_digitado = ""
 mensagem_erro = ""
 lista_jogadores = []
@@ -38,7 +38,6 @@ def desenhar_texto(texto, fonte, cor, x, y, centro=True):
     tela.blit(obj_texto, rect_texto)
     return rect_texto
 
-# --- NOVO: Tela para escolher o método de conexão ---
 def desenhar_tela_conexao():
     tela.fill(COR_PRETA)
     desenhar_texto("Como deseja se conectar?", fonte_media, COR_BRANCA, LARGURA_TELA // 2, 150)
@@ -48,7 +47,6 @@ def desenhar_tela_conexao():
         desenhar_texto(mensagem_erro, fonte_pequena, COR_VERMELHO, LARGURA_TELA // 2, 500)
     return btn_procurar, btn_manual
 
-# --- NOVO: Tela para digitar o IP manualmente ---
 def desenhar_tela_ip(ip_atual):
     tela.fill(COR_PRETA)
     desenhar_texto("Digite o IP do Servidor", fonte_media, COR_BRANCA, LARGURA_TELA // 2, 150)
@@ -111,7 +109,8 @@ def desenhar_jogo():
     texto_placar = f"{nome_p1}   {placar['p1']} X {placar['p2']}   {nome_p2}"
     desenhar_texto(texto_placar, fonte_media, COR_BRANCA, LARGURA_TELA // 2, 40)
 
-cliente = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+# --- A variável global do socket é declarada, mas será instanciada depois ---
+cliente = None
 conectado_ao_servidor = False
 
 def procurar_servidor_udp():
@@ -126,7 +125,7 @@ def procurar_servidor_udp():
         estado_ecra = 'TELA_CONEXAO'
         return
     print(f"[DESCOBERTA] Escutando por servidores na porta {PORTA_DESCOBERTA}")
-    sock_udp.settimeout(10) # Timeout de 10 segundos
+    sock_udp.settimeout(10)
     try:
         dados, addr = sock_udp.recvfrom(1024)
         mensagem = json.loads(dados.decode('utf-8'))
@@ -147,7 +146,7 @@ def procurar_servidor_udp():
         sock_udp.close()
 
 def enviar_mensagem(dados):
-    if not conectado_ao_servidor: return
+    if not conectado_ao_servidor or not cliente: return
     try:
         cliente.send((json.dumps(dados) + '\n').encode('utf-8'))
     except (ConnectionResetError, BrokenPipeError):
@@ -184,14 +183,14 @@ def receber_mensagens():
                 elif dados['tipo'] == 'FIM_DE_JOGO':
                     mensagem_fim_de_jogo = f"Vencedor: {dados['payload']}"
                     estado_ecra = 'FIM_DE_JOGO'
-        except (ConnectionResetError, json.JSONDecodeError): break
+        except (ConnectionResetError, json.JSONDecodeError, OSError): break
     print("Desconectado do servidor.")
     conectado_ao_servidor = False
     try: cliente.close()
     except: pass
 
 def main():
-    global estado_ecra, meu_apelido, conectado_ao_servidor, game_state, mensagem_fim_de_jogo, ip_digitado, servidor_encontrado, mensagem_erro
+    global estado_ecra, meu_apelido, conectado_ao_servidor, game_state, mensagem_fim_de_jogo, ip_digitado, servidor_encontrado, mensagem_erro, cliente
     
     rodando = True
     clock = pygame.time.Clock()
@@ -220,7 +219,7 @@ def main():
                         if len(meu_apelido) > 0 and servidor_encontrado:
                             try:
                                 print(f"Conectando a {servidor_encontrado[0]}:{servidor_encontrado[1]}...")
-                                # Precisa recriar o socket se a conexão anterior falhou
+                                # --- CORREÇÃO: Cria um novo socket para cada tentativa de conexão ---
                                 cliente = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                                 cliente.connect(servidor_encontrado)
                                 conectado_ao_servidor = True
@@ -237,17 +236,15 @@ def main():
                     else:
                         if len(meu_apelido) < 15: meu_apelido += event.unicode
             
-            # --- ALTERAÇÃO 2: Lógica para as novas telas ---
             elif estado_ecra == 'DIGITANDO_IP':
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_RETURN:
                         if len(ip_digitado) > 0:
-                            servidor_encontrado = (ip_digitado, 2004) # Usa a porta padrão
+                            servidor_encontrado = (ip_digitado, 2004)
                             estado_ecra = 'DIGITANDO_NOME'
                     elif event.key == pygame.K_BACKSPACE:
                         ip_digitado = ip_digitado[:-1]
                     else:
-                        # Permite apenas números e pontos
                         if event.unicode.isdigit() or event.unicode == '.':
                             ip_digitado += event.unicode
             
@@ -282,7 +279,6 @@ def main():
                     mensagem_fim_de_jogo = ""
                     estado_ecra = 'MENU'
 
-        # --- ALTERAÇÃO 3: Desenho das novas telas ---
         if estado_ecra == 'TELA_CONEXAO':
             btn_procurar, btn_manual = desenhar_tela_conexao()
         elif estado_ecra == 'PROCURANDO_SERVIDOR':
@@ -312,7 +308,7 @@ def main():
         clock.tick(60)
 
     pygame.quit()
-    if conectado_ao_servidor:
+    if conectado_ao_servidor and cliente:
         cliente.close()
 
 if __name__ == '__main__':
