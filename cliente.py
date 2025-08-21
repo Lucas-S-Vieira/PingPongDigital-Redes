@@ -1,4 +1,3 @@
-# cliente.py (VERSÃO FINAL COM BOTÃO DE ATUALIZAR)
 import socket
 import threading
 import json
@@ -10,7 +9,10 @@ servidor_encontrado = None
 LARGURA_TELA, ALTURA_TELA = 800, 600
 COR_BRANCA, COR_PRETA, COR_CINZA, COR_VERDE, COR_VERMELHO, COR_AZUL = (255, 255, 255), (0, 0, 0), (100, 100, 100), (0, 255, 0), (255, 0, 0), (0, 100, 255)
 
-estado_ecra = 'PROCURANDO_SERVIDOR' 
+# --- ALTERAÇÃO 1: Novo estado inicial e variáveis ---
+estado_ecra = 'TELA_CONEXAO' # 'TELA_CONEXAO', 'PROCURANDO_SERVIDOR', 'DIGITANDO_IP', ...
+ip_digitado = ""
+mensagem_erro = ""
 lista_jogadores = []
 meu_apelido = ""
 meu_player_id = None
@@ -18,8 +20,6 @@ oponente_apelido = ""
 game_state = {}
 convite_de = None
 mensagem_fim_de_jogo = ""
-
-# --- ALTERAÇÃO 1: Variáveis para a contagem regressiva dinâmica ---
 contagem_tempo_inicio = 0
 contagem_duracao = 0
 
@@ -37,6 +37,25 @@ def desenhar_texto(texto, fonte, cor, x, y, centro=True):
     else: rect_texto.topleft = (x, y)
     tela.blit(obj_texto, rect_texto)
     return rect_texto
+
+# --- NOVO: Tela para escolher o método de conexão ---
+def desenhar_tela_conexao():
+    tela.fill(COR_PRETA)
+    desenhar_texto("Como deseja se conectar?", fonte_media, COR_BRANCA, LARGURA_TELA // 2, 150)
+    btn_procurar = desenhar_texto("Procurar Servidor na Rede", fonte_pequena, COR_BRANCA, LARGURA_TELA // 2, 300)
+    btn_manual = desenhar_texto("Conectar por IP", fonte_pequena, COR_BRANCA, LARGURA_TELA // 2, 400)
+    if mensagem_erro:
+        desenhar_texto(mensagem_erro, fonte_pequena, COR_VERMELHO, LARGURA_TELA // 2, 500)
+    return btn_procurar, btn_manual
+
+# --- NOVO: Tela para digitar o IP manualmente ---
+def desenhar_tela_ip(ip_atual):
+    tela.fill(COR_PRETA)
+    desenhar_texto("Digite o IP do Servidor", fonte_media, COR_BRANCA, LARGURA_TELA // 2, 150)
+    caixa_rect = pygame.Rect(LARGURA_TELA // 2 - 200, ALTURA_TELA // 2 - 25, 400, 50)
+    pygame.draw.rect(tela, COR_BRANCA, caixa_rect, 2)
+    desenhar_texto(ip_atual, fonte_media, COR_BRANCA, LARGURA_TELA // 2, ALTURA_TELA // 2)
+    desenhar_texto("Pressione ENTER para conectar", fonte_pequena, COR_CINZA, LARGURA_TELA // 2, ALTURA_TELA // 2 + 100)
 
 def desenhar_tela_apelido(apelido_atual):
     tela.fill(COR_PRETA)
@@ -64,9 +83,7 @@ def desenhar_lista_jogadores():
             rect = desenhar_texto(jogador['apelido'], fonte_pequena, COR_BRANCA, LARGURA_TELA // 2, y_pos)
             botoes_jogadores[jogador['apelido']] = rect
             y_pos += 50
-    
     btn_atualizar = desenhar_texto("Atualizar Lista", fonte_pequena, COR_AZUL, LARGURA_TELA // 2, ALTURA_TELA - 50)
-    
     return botoes_jogadores, btn_atualizar
 
 def desenhar_tela_espera(mensagem):
@@ -98,29 +115,36 @@ cliente = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 conectado_ao_servidor = False
 
 def procurar_servidor_udp():
-    global servidor_encontrado, estado_ecra
+    global servidor_encontrado, estado_ecra, mensagem_erro
     sock_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock_udp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
         sock_udp.bind(('', PORTA_DESCOBERTA))
     except Exception as e:
         print(f"Erro ao bindar porta de descoberta: {e}")
+        mensagem_erro = "Erro ao iniciar busca. Tente o IP manual."
+        estado_ecra = 'TELA_CONEXAO'
         return
     print(f"[DESCOBERTA] Escutando por servidores na porta {PORTA_DESCOBERTA}")
-    while not servidor_encontrado:
-        try:
-            dados, addr = sock_udp.recvfrom(1024)
-            mensagem = json.loads(dados.decode('utf-8'))
-            if mensagem.get("assinatura") == MENSAGEM_DESCOBERTA:
-                ip_servidor = addr[0]
-                porta_jogo = mensagem.get("porta_jogo")
-                servidor_encontrado = (ip_servidor, porta_jogo)
-                print(f"[DESCOBERTA] Servidor encontrado em {ip_servidor}:{porta_jogo}")
-                estado_ecra = 'DIGITANDO_NOME'
-                break
-        except:
-            pass
-    sock_udp.close()
+    sock_udp.settimeout(10) # Timeout de 10 segundos
+    try:
+        dados, addr = sock_udp.recvfrom(1024)
+        mensagem = json.loads(dados.decode('utf-8'))
+        if mensagem.get("assinatura") == MENSAGEM_DESCOBERTA:
+            ip_servidor = addr[0]
+            porta_jogo = mensagem.get("porta_jogo")
+            servidor_encontrado = (ip_servidor, porta_jogo)
+            print(f"[DESCOBERTA] Servidor encontrado em {ip_servidor}:{porta_jogo}")
+            estado_ecra = 'DIGITANDO_NOME'
+    except socket.timeout:
+        print("[DESCOBERTA] Nenhum servidor encontrado.")
+        mensagem_erro = "Nenhum servidor encontrado. Verifique a rede."
+        estado_ecra = 'TELA_CONEXAO'
+    except Exception as e:
+        print(f"Erro na descoberta: {e}")
+        estado_ecra = 'TELA_CONEXAO'
+    finally:
+        sock_udp.close()
 
 def enviar_mensagem(dados):
     if not conectado_ao_servidor: return
@@ -148,7 +172,6 @@ def receber_mensagens():
                     if not dados['payload']['aceito']:
                         print(f"{dados['payload']['remetente']} recusou o seu convite.")
                         estado_ecra = 'ESCOLHENDO_JOGADOR'
-                # --- ALTERAÇÃO 2: Inicia o temporizador da contagem ---
                 elif dados['tipo'] == 'CONTAGEM_INICIO':
                     contagem_duracao = dados['payload']
                     contagem_tempo_inicio = pygame.time.get_ticks()
@@ -168,12 +191,11 @@ def receber_mensagens():
     except: pass
 
 def main():
-    global estado_ecra, meu_apelido, conectado_ao_servidor, game_state, mensagem_fim_de_jogo
-    thread_descoberta = threading.Thread(target=procurar_servidor_udp, daemon=True)
-    thread_descoberta.start()
+    global estado_ecra, meu_apelido, conectado_ao_servidor, game_state, mensagem_fim_de_jogo, ip_digitado, servidor_encontrado, mensagem_erro
+    
     rodando = True
     clock = pygame.time.Clock()
-    btn_jogar, botoes_jogadores, btn_aceitar, btn_recusar, btn_atualizar = None, {}, None, None, None
+    btn_procurar, btn_manual, btn_jogar, botoes_jogadores, btn_aceitar, btn_recusar, btn_atualizar = None, None, None, {}, None, None, None
 
     while rodando:
         for event in pygame.event.get():
@@ -198,6 +220,8 @@ def main():
                         if len(meu_apelido) > 0 and servidor_encontrado:
                             try:
                                 print(f"Conectando a {servidor_encontrado[0]}:{servidor_encontrado[1]}...")
+                                # Precisa recriar o socket se a conexão anterior falhou
+                                cliente = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                                 cliente.connect(servidor_encontrado)
                                 conectado_ao_servidor = True
                                 enviar_mensagem({'tipo': 'REGISTER', 'payload': meu_apelido})
@@ -207,15 +231,37 @@ def main():
                                 estado_ecra = 'MENU'
                             except Exception as e:
                                 print(f"Não foi possível conectar ao servidor: {e}")
-                                estado_ecra = 'PROCURANDO_SERVIDOR'
-                                thread_descoberta = threading.Thread(target=procurar_servidor_udp, daemon=True)
-                                thread_descoberta.start()
+                                mensagem_erro = "Falha ao conectar. Verifique o IP."
+                                estado_ecra = 'TELA_CONEXAO'
                     elif event.key == pygame.K_BACKSPACE: meu_apelido = meu_apelido[:-1]
                     else:
                         if len(meu_apelido) < 15: meu_apelido += event.unicode
             
+            # --- ALTERAÇÃO 2: Lógica para as novas telas ---
+            elif estado_ecra == 'DIGITANDO_IP':
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN:
+                        if len(ip_digitado) > 0:
+                            servidor_encontrado = (ip_digitado, 2004) # Usa a porta padrão
+                            estado_ecra = 'DIGITANDO_NOME'
+                    elif event.key == pygame.K_BACKSPACE:
+                        ip_digitado = ip_digitado[:-1]
+                    else:
+                        # Permite apenas números e pontos
+                        if event.unicode.isdigit() or event.unicode == '.':
+                            ip_digitado += event.unicode
+            
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                if estado_ecra == 'MENU' and btn_jogar and btn_jogar.collidepoint(event.pos): estado_ecra = 'ESCOLHENDO_JOGADOR'
+                if estado_ecra == 'TELA_CONEXAO':
+                    mensagem_erro = ""
+                    if btn_procurar and btn_procurar.collidepoint(event.pos):
+                        estado_ecra = 'PROCURANDO_SERVIDOR'
+                        thread_descoberta = threading.Thread(target=procurar_servidor_udp, daemon=True)
+                        thread_descoberta.start()
+                    elif btn_manual and btn_manual.collidepoint(event.pos):
+                        estado_ecra = 'DIGITANDO_IP'
+                
+                elif estado_ecra == 'MENU' and btn_jogar and btn_jogar.collidepoint(event.pos): estado_ecra = 'ESCOLHENDO_JOGADOR'
                 elif estado_ecra == 'ESCOLHENDO_JOGADOR':
                     if btn_atualizar and btn_atualizar.collidepoint(event.pos):
                         enviar_mensagem({'tipo': 'PEDIR_LISTA_JOGADORES'})
@@ -236,15 +282,19 @@ def main():
                     mensagem_fim_de_jogo = ""
                     estado_ecra = 'MENU'
 
-        if estado_ecra == 'PROCURANDO_SERVIDOR':
+        # --- ALTERAÇÃO 3: Desenho das novas telas ---
+        if estado_ecra == 'TELA_CONEXAO':
+            btn_procurar, btn_manual = desenhar_tela_conexao()
+        elif estado_ecra == 'PROCURANDO_SERVIDOR':
             desenhar_tela_espera("Procurando servidor na rede...")
+        elif estado_ecra == 'DIGITANDO_IP':
+            desenhar_tela_ip(ip_digitado)
         elif estado_ecra == 'DIGITANDO_NOME': desenhar_tela_apelido(meu_apelido)
         elif estado_ecra == 'MENU': btn_jogar = desenhar_menu()
         elif estado_ecra == 'ESCOLHENDO_JOGADOR':
             botoes_jogadores, btn_atualizar = desenhar_lista_jogadores()
         elif estado_ecra == 'AGUARDANDO_RESPOSTA': desenhar_tela_espera("Aguardando resposta do oponente...")
         elif estado_ecra == 'CONVITE_RECEBIDO': btn_aceitar, btn_recusar = desenhar_convite()
-        # --- ALTERAÇÃO 3: Lógica de desenho da contagem regressiva ---
         elif estado_ecra == 'CONTAGEM':
             if contagem_tempo_inicio > 0:
                 tempo_passado = (pygame.time.get_ticks() - contagem_tempo_inicio) / 1000
