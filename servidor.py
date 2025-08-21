@@ -9,7 +9,7 @@ HOST = '127.0.0.1'
 PORTA = 2004
 LARGURA_TELA, ALTURA_TELA = 800, 600
 VELOCIDADE_BOLA = 5
-VELOCIDADE_PADDLE = 1
+VELOCIDADE_PADDLE = 10
 clientes = []
 game_state = {}
 jogo_rodando = threading.Event()
@@ -54,20 +54,57 @@ def loop_do_jogo():
                 game_state['placar']['p1'] += 1
                 bola['x'], bola['y'] = LARGURA_TELA // 2, ALTURA_TELA // 2
             dados = {"tipo": "GAME_STATE", "payload": game_state}
+            placar = game_state['placar']
+            vencedor = None
+            if placar['p1'] >= 5:
+                vencedor = "Jogador 1" 
+            elif placar['p2'] >= 5:
+                vencedor = "Jogador 2"
+
+            if vencedor:
+                print(f"[FIM DE JOGO] O vencedor é {vencedor}.")
+                dados_fim = {'tipo': 'GAME_OVER', 'payload': vencedor}
+                transmitir_para_jogadores(dados_fim)
+                jogo_rodando.clear()
             transmitir_para_jogadores(dados)
         time.sleep(1/60)
 
 def gerenciar_cliente(conexao, endereco, player_id):
-    apelido = f"Jogador{player_id}"
-    print(f"[NOVA CONEXÃO] {endereco} como {apelido}.")
+
+    try:
+        buffer_inicial = ""
+        while '\n' not in buffer_inicial:
+            buffer_inicial += conexao.recv(1024).decode('utf-8')
+
+        mensagem_registro, buffer = buffer_inicial.split('\n', 1)
+        dados = json.loads(mensagem_registro)
+
+        if dados['tipo'] == 'REGISTER':
+            apelido = dados ['payload']
+        else:
+            apelido = f"Jogador{player_id}"
+
+    except:
+        conexao.close()
+        return
+
+
+    print(f"[NOVA CONEXÃO] {endereco} se conectou como {apelido}.")
     clientes.append((conexao, endereco, apelido))
+
+    lista_de_apelidos = [a for _, _, a in clientes]
+    dados_lista = {"tipo": "USER_LIST", "payload": lista_de_apelidos}
+    transmitir_para_jogadores(dados_lista)
     
     dados_id = {"tipo": "PLAYER_ID", "payload": f"P{player_id}"}
     mensagem_id = json.dumps(dados_id) + '\n'
     conexao.send(mensagem_id.encode('utf-8'))
 
     if len(clientes) == 2:
-        print("[INÍCIO DE JOGO] Dois jogadores conectados. Iniciando a partida.")
+        print("[INÍCIO DE JOGO] Dois jogadores conectados. Iniciando em 5 segundos...")
+        transmitir_para_jogadores({'tipo': 'COUNTDOWN', 'payload': 5})
+        time.sleep(5)
+        print("Iniciando a partida.")
         resetar_jogo()
 
     # CORREÇÃO: Usa um buffer para receber dados do cliente
@@ -85,6 +122,12 @@ def gerenciar_cliente(conexao, endereco, player_id):
             while '\n' in buffer:
                 mensagem_completa, buffer = buffer.split('\n', 1)
                 dados = json.loads(mensagem_completa)
+
+                if dados['tipo'] == 'REQUEST_USER_LIST':
+                    lista_de_apelidos = [a for _, _, a in clientes]
+                    dados_lista = {"tipo": "USER_LIST", "payload": lista_de_apelidos}
+                    conexao.send((json.dumps(dados_lista) + '\n').encode('utf-8'))
+                    continue
 
                 if dados['tipo'] == 'MOVE':
                     with game_state_lock:

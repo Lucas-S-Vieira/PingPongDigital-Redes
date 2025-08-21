@@ -12,12 +12,19 @@ COR_BRANCA, COR_PRETA = (255, 255, 255), (0, 0, 0)
 cliente = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 cliente.connect((SERVER_HOST, SERVER_PORTA))
 
+apelido = input("Digite o seu apelido: ")
+dados_registro = {'tipo': 'REGISTER', 'payload': apelido}
+cliente.send((json.dumps(dados_registro) + '\n').encode('utf-8'))
+
 game_state = {}
 meu_player_id = None
+lista_jogadores = []
+mensagem_central = ""
+vencedor = None
 
 # Função para receber mensagens do servidor
 def receber_mensagens():
-    global game_state, meu_player_id
+    global game_state, meu_player_id, lista_jogadores, mensagem_central, vencedor
     buffer = ""
     while True:
         try:
@@ -33,6 +40,15 @@ def receber_mensagens():
                 elif dados['tipo'] == 'PLAYER_ID':
                     meu_player_id = dados['payload']
                     print(f"Você é o {meu_player_id}")
+                elif dados['tipo'] == 'USER_LIST':
+                    lista_jogadores = dados['payload']
+                    print(f"Jogadores online: {lista_jogadores}")
+                elif dados['tipo'] == 'COUNTDOWN':
+                    mensagem_central = f"O jogo começa em {dados['payload']}..."
+                elif dados['tipo'] == 'GAME_OVER':
+                    vencedor = dados['payload']
+                    mensagem_central = f"Fim de Jogo! Vencedor: {vencedor}"
+                    game_state = {}
         except:
             break
     print("Desconectado do servidor.")
@@ -53,6 +69,10 @@ while rodando:
     for event in pygame.event.get():
         if event.type == pygame.QUIT: 
             rodando = False
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_u: # Se a tecla 'U' for pressionada
+                dados_update = {'tipo': 'REQUEST_USER_LIST'}
+                cliente.send((json.dumps(dados_update) + '\n').encode('utf-8'))
 
     keys = pygame.key.get_pressed()
     if meu_player_id == 'P1':
@@ -68,12 +88,12 @@ while rodando:
 
     # menu para iniciar game
     tela.fill(COR_PRETA)
-    if not game_state:
-        texto_espera = fonte.render("Aguardando outro jogador...", True, COR_BRANCA)
-        tela.blit(texto_espera, (
-            LARGURA_TELA // 2 - texto_espera.get_width() // 2, 
-            ALTURA_TELA // 2 - texto_espera.get_height() // 2
-        ))
+    if vencedor:
+        texto_fim = fonte.render(mensagem_central, True, COR_BRANCA)
+        tela.blit(texto_fim, (LARGURA_TELA // 2 - texto_fim.get_width() // 2, ALTURA_TELA // 2 - texto_fim.get_height() // 2))
+    elif not game_state:
+        texto_espera = fonte.render(mensagem_central or "Aguardando jogador...", True, COR_BRANCA)
+        tela.blit(texto_espera, (LARGURA_TELA // 2 - texto_espera.get_width() // 2, ALTURA_TELA // 2 - texto_espera.get_height() // 2))
     else:
         # Desenha o jogo normalmente
         p1, p2 = game_state['paddle1'], game_state['paddle2']
