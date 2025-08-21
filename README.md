@@ -1,7 +1,5 @@
 # Pong Multiplayer com Sockets em Python
 
-![Imagem de uma partida de Pong](https://i.imgur.com/Eddt61a.png)
-
 ## 📖 Sobre o Projeto
 
 Este projeto é uma implementação de um jogo clássico de Pong com funcionalidades multiplayer, desenvolvido como parte do trabalho prático da disciplina de Redes de Computadores 1. O jogo utiliza uma arquitetura cliente-servidor com sockets TCP para a comunicação principal e sockets UDP para a descoberta automática de servidores na rede local.
