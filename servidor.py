@@ -3,18 +3,14 @@ import threading
 import json
 import time
 
-# --- ALTERAÇÃO 1: Escutar em todas as interfaces de rede ---
 HOST = '0.0.0.0' 
 PORTA_JOGO = 2004
-PORTA_DESCOBERTA = 2005 # Porta para os anúncios UDP
+PORTA_DESCOBERTA = 2005
 MENSAGEM_DESCOBERTA = "PONG_SERVER_DISCOVERY"
-
 LARGURA_TELA, ALTURA_TELA = 800, 600
 VELOCIDADE_BOLA_PPS = 300
 VELOCIDADE_PADDLE_PPS = 400
 TIMEOUT_SEGUNDOS = 30 
-
-# --- NOVO: Variável global para a pontuação de vitória ---
 PONTOS_PARA_VENCER = 5
 
 clientes = []
@@ -22,23 +18,14 @@ sessoes_de_jogo = {}
 estados_de_jogo = {} 
 lock = threading.Lock()
 
-# --- NOVO: Função para anunciar o servidor na rede ---
 def anunciar_servidor():
-    """
-    Envia pacotes de broadcast UDP a cada 2 segundos para que os clientes
-    possam encontrar o servidor automaticamente.
-    """
     sock_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock_udp.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-    
-    # O endereço '<broadcast>' envia para todos os dispositivos na rede local
     endereco_broadcast = ('<broadcast>', PORTA_DESCOBERTA)
-    
     mensagem = json.dumps({
         "assinatura": MENSAGEM_DESCOBERTA,
         "porta_jogo": PORTA_JOGO
     }).encode('utf-8')
-
     while True:
         try:
             sock_udp.sendto(mensagem, endereco_broadcast)
@@ -46,8 +33,6 @@ def anunciar_servidor():
         except Exception as e:
             print(f"[ERRO NO ANÚNCIO UDP] {e}")
             time.sleep(5)
-
-# --- (O resto do código do servidor permanece praticamente o mesmo) ---
 
 def transmitir_para_todos(dados):
     mensagem = json.dumps(dados) + '\n'
@@ -77,7 +62,6 @@ def iniciar_sessao_de_jogo(apelido1, apelido2):
                 clientes[i] = (c, e, a, 'em_jogo')
         sessoes_de_jogo[conn1] = conn2
         sessoes_de_jogo[conn2] = conn1
-
     tempo_inicial = time.time()
     game_state = {
         'bola': {'x': LARGURA_TELA / 2, 'y': ALTURA_TELA / 2, 'vx': 1, 'vy': 1},
@@ -87,20 +71,16 @@ def iniciar_sessao_de_jogo(apelido1, apelido2):
         'jogadores': { 'P1': apelido1, 'P2': apelido2 },
         'ultima_atividade': { 'P1': tempo_inicial, 'P2': tempo_inicial }
     }
-    
     with lock:
         estados_de_jogo[conn1] = game_state
         estados_de_jogo[conn2] = game_state
-    
     msg_countdown = {'tipo': 'CONTAGEM_INICIO', 'payload': 3}
     conn1.send((json.dumps(msg_countdown) + '\n').encode('utf-8'))
     conn2.send((json.dumps(msg_countdown) + '\n').encode('utf-8'))
     time.sleep(3)
-    
     thread_jogo = threading.Thread(target=loop_do_jogo, args=(conn1, conn2, game_state))
     thread_jogo.daemon = True
     thread_jogo.start()
-    
     msg_inicio = {'tipo': 'JOGO_INICIADO', 'payload': {'id': 'P1', 'oponente': apelido2}}
     conn1.send((json.dumps(msg_inicio) + '\n').encode('utf-8'))
     msg_inicio = {'tipo': 'JOGO_INICIADO', 'payload': {'id': 'P2', 'oponente': apelido1}}
@@ -132,12 +112,9 @@ def loop_do_jogo(conn1, conn2, game_state):
             elif bola['x'] >= LARGURA_TELA:
                 game_state['placar']['p1'] += 1
                 bola['x'], bola['y'] = LARGURA_TELA / 2, ALTURA_TELA / 2
-            
             vencedor = None
-            # --- ALTERAÇÃO 2: Usa a nova variável para verificar a vitória ---
             if game_state['placar']['p1'] >= PONTOS_PARA_VENCER: vencedor = game_state['jogadores']['P1']
             elif game_state['placar']['p2'] >= PONTOS_PARA_VENCER: vencedor = game_state['jogadores']['P2']
-            
             if not vencedor:
                 if tempo_atual - game_state['ultima_atividade']['P1'] > TIMEOUT_SEGUNDOS:
                     vencedor = game_state['jogadores']['P2']
@@ -198,7 +175,14 @@ def gerenciar_cliente(conexao, endereco):
             while '\n' in buffer:
                 mensagem_completa, buffer = buffer.split('\n', 1)
                 dados = json.loads(mensagem_completa)
-                if dados['tipo'] == 'CONVIDAR_JOGADOR' or dados['tipo'] == 'RESPONDER_CONVITE':
+
+                if dados['tipo'] == 'PEDIR_LISTA_JOGADORES':
+                    with lock:
+                        lista_jogadores = [{'apelido': ap, 'estado': st} for _, _, ap, st in clientes]
+                    msg_lista = {'tipo': 'LISTA_JOGADORES', 'payload': lista_jogadores}
+                    conexao.send((json.dumps(msg_lista) + '\n').encode('utf-8'))
+
+                elif dados['tipo'] == 'CONVIDAR_JOGADOR' or dados['tipo'] == 'RESPONDER_CONVITE':
                     if dados['tipo'] == 'CONVIDAR_JOGADOR':
                         apelido_alvo = dados['payload']
                         conn_alvo = encontrar_cliente_por_apelido(apelido_alvo)
@@ -255,10 +239,6 @@ def iniciar_servidor_tcp():
 
 if __name__ == "__main__":
     print("[INICIANDO] O servidor do jogo está iniciando...")
-    
-    # --- ALTERAÇÃO 2: Inicia a thread de anúncio UDP ---
     thread_anuncio = threading.Thread(target=anunciar_servidor, daemon=True)
     thread_anuncio.start()
-    
-    # Inicia o servidor principal do jogo
     iniciar_servidor_tcp()

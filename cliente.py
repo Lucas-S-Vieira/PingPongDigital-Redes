@@ -3,15 +3,12 @@ import threading
 import json
 import pygame
 
-# --- ALTERAÇÃO 1: Configurações de descoberta ---
 PORTA_DESCOBERTA = 2005
 MENSAGEM_DESCOBERTA = "PONG_SERVER_DISCOVERY"
-servidor_encontrado = None # Vai guardar o (IP, Porta) do servidor
-
+servidor_encontrado = None
 LARGURA_TELA, ALTURA_TELA = 800, 600
-COR_BRANCA, COR_PRETA, COR_CINZA, COR_VERDE, COR_VERMELHO = (255, 255, 255), (0, 0, 0), (100, 100, 100), (0, 255, 0), (255, 0, 0)
+COR_BRANCA, COR_PRETA, COR_CINZA, COR_VERDE, COR_VERMELHO, COR_AZUL = (255, 255, 255), (0, 0, 0), (100, 100, 100), (0, 255, 0), (255, 0, 0), (0, 100, 255)
 
-# --- ALTERAÇÃO 2: Estado inicial é procurar o servidor ---
 estado_ecra = 'PROCURANDO_SERVIDOR' 
 lista_jogadores = []
 meu_apelido = ""
@@ -29,7 +26,6 @@ fonte_grande = pygame.font.Font(None, 74)
 fonte_media = pygame.font.Font(None, 50)
 fonte_pequena = pygame.font.Font(None, 36)
 
-# --- (Funções de desenho permanecem iguais) ---
 def desenhar_texto(texto, fonte, cor, x, y, centro=True):
     obj_texto = fonte.render(texto, True, cor)
     rect_texto = obj_texto.get_rect()
@@ -37,6 +33,7 @@ def desenhar_texto(texto, fonte, cor, x, y, centro=True):
     else: rect_texto.topleft = (x, y)
     tela.blit(obj_texto, rect_texto)
     return rect_texto
+
 def desenhar_tela_apelido(apelido_atual):
     tela.fill(COR_PRETA)
     desenhar_texto("Digite seu Apelido", fonte_media, COR_BRANCA, LARGURA_TELA // 2, 150)
@@ -44,10 +41,12 @@ def desenhar_tela_apelido(apelido_atual):
     pygame.draw.rect(tela, COR_BRANCA, caixa_rect, 2)
     desenhar_texto(apelido_atual, fonte_media, COR_BRANCA, LARGURA_TELA // 2, ALTURA_TELA // 2)
     desenhar_texto("Pressione ENTER para continuar", fonte_pequena, COR_CINZA, LARGURA_TELA // 2, ALTURA_TELA // 2 + 100)
+
 def desenhar_menu():
     tela.fill(COR_PRETA)
     desenhar_texto("PONG Multiplayer", fonte_grande, COR_BRANCA, LARGURA_TELA // 2, 150)
     return desenhar_texto("Jogar", fonte_media, COR_BRANCA, LARGURA_TELA // 2, 350)
+
 def desenhar_lista_jogadores():
     tela.fill(COR_PRETA)
     desenhar_texto("Escolha um Oponente", fonte_media, COR_BRANCA, LARGURA_TELA // 2, 50)
@@ -61,16 +60,23 @@ def desenhar_lista_jogadores():
             rect = desenhar_texto(jogador['apelido'], fonte_pequena, COR_BRANCA, LARGURA_TELA // 2, y_pos)
             botoes_jogadores[jogador['apelido']] = rect
             y_pos += 50
-    return botoes_jogadores
+    
+    # --- NOVO: Desenha o botão de atualizar ---
+    btn_atualizar = desenhar_texto("Atualizar Lista", fonte_pequena, COR_AZUL, LARGURA_TELA // 2, ALTURA_TELA - 50)
+    
+    return botoes_jogadores, btn_atualizar
+
 def desenhar_tela_espera(mensagem):
     tela.fill(COR_PRETA)
     desenhar_texto(mensagem, fonte_media, COR_BRANCA, LARGURA_TELA // 2, ALTURA_TELA // 2)
+
 def desenhar_convite():
     tela.fill(COR_PRETA)
     desenhar_texto(f"Convite de {convite_de}", fonte_media, COR_BRANCA, LARGURA_TELA // 2, 200)
     btn_aceitar = desenhar_texto("Aceitar", fonte_media, COR_VERDE, LARGURA_TELA // 2 - 100, 400)
     btn_recusar = desenhar_texto("Recusar", fonte_media, COR_VERMELHO, LARGURA_TELA // 2 + 100, 400)
     return btn_aceitar, btn_recusar
+
 def desenhar_jogo():
     tela.fill(COR_PRETA)
     if not game_state: return
@@ -85,23 +91,18 @@ def desenhar_jogo():
     texto_placar = f"{nome_p1}   {placar['p1']} X {placar['p2']}   {nome_p2}"
     desenhar_texto(texto_placar, fonte_media, COR_BRANCA, LARGURA_TELA // 2, 40)
 
-# --- Lógica de Rede ---
 cliente = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 conectado_ao_servidor = False
 
-# --- NOVO: Função para escutar por anúncios do servidor ---
 def procurar_servidor_udp():
     global servidor_encontrado, estado_ecra
-    
     sock_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock_udp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
         sock_udp.bind(('', PORTA_DESCOBERTA))
     except Exception as e:
         print(f"Erro ao bindar porta de descoberta: {e}")
-        # Adicionar lógica para lidar com falha (ex: input manual de IP)
         return
-
     print(f"[DESCOBERTA] Escutando por servidores na porta {PORTA_DESCOBERTA}")
     while not servidor_encontrado:
         try:
@@ -112,7 +113,7 @@ def procurar_servidor_udp():
                 porta_jogo = mensagem.get("porta_jogo")
                 servidor_encontrado = (ip_servidor, porta_jogo)
                 print(f"[DESCOBERTA] Servidor encontrado em {ip_servidor}:{porta_jogo}")
-                estado_ecra = 'DIGITANDO_NOME' # Muda para a tela de apelido
+                estado_ecra = 'DIGITANDO_NOME'
                 break
         except:
             pass
@@ -161,17 +162,13 @@ def receber_mensagens():
     try: cliente.close()
     except: pass
 
-# --- Loop Principal ---
 def main():
     global estado_ecra, meu_apelido, conectado_ao_servidor, game_state, mensagem_fim_de_jogo
-    
-    # --- ALTERAÇÃO 3: Inicia a thread de descoberta ---
     thread_descoberta = threading.Thread(target=procurar_servidor_udp, daemon=True)
     thread_descoberta.start()
-
     rodando = True
     clock = pygame.time.Clock()
-    btn_jogar, botoes_jogadores, btn_aceitar, btn_recusar = None, {}, None, None
+    btn_jogar, botoes_jogadores, btn_aceitar, btn_recusar, btn_atualizar = None, {}, None, None, None
 
     while rodando:
         for event in pygame.event.get():
@@ -205,7 +202,7 @@ def main():
                                 estado_ecra = 'MENU'
                             except Exception as e:
                                 print(f"Não foi possível conectar ao servidor: {e}")
-                                estado_ecra = 'PROCURANDO_SERVIDOR' # Volta a procurar
+                                estado_ecra = 'PROCURANDO_SERVIDOR'
                                 thread_descoberta = threading.Thread(target=procurar_servidor_udp, daemon=True)
                                 thread_descoberta.start()
                     elif event.key == pygame.K_BACKSPACE: meu_apelido = meu_apelido[:-1]
@@ -215,6 +212,9 @@ def main():
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if estado_ecra == 'MENU' and btn_jogar and btn_jogar.collidepoint(event.pos): estado_ecra = 'ESCOLHENDO_JOGADOR'
                 elif estado_ecra == 'ESCOLHENDO_JOGADOR':
+                    # --- NOVO: Verifica clique no botão de atualizar ---
+                    if btn_atualizar and btn_atualizar.collidepoint(event.pos):
+                        enviar_mensagem({'tipo': 'PEDIR_LISTA_JOGADORES'})
                     for apelido, rect in botoes_jogadores.items():
                         if rect.collidepoint(event.pos):
                             enviar_mensagem({'tipo': 'CONVIDAR_JOGADOR', 'payload': apelido})
@@ -232,12 +232,12 @@ def main():
                     mensagem_fim_de_jogo = ""
                     estado_ecra = 'MENU'
 
-        # --- Desenho baseado no estado ---
         if estado_ecra == 'PROCURANDO_SERVIDOR':
             desenhar_tela_espera("Procurando servidor na rede...")
         elif estado_ecra == 'DIGITANDO_NOME': desenhar_tela_apelido(meu_apelido)
         elif estado_ecra == 'MENU': btn_jogar = desenhar_menu()
-        elif estado_ecra == 'ESCOLHENDO_JOGADOR': botoes_jogadores = desenhar_lista_jogadores()
+        elif estado_ecra == 'ESCOLHENDO_JOGADOR':
+            botoes_jogadores, btn_atualizar = desenhar_lista_jogadores()
         elif estado_ecra == 'AGUARDANDO_RESPOSTA': desenhar_tela_espera("Aguardando resposta do oponente...")
         elif estado_ecra == 'CONVITE_RECEBIDO': btn_aceitar, btn_recusar = desenhar_convite()
         elif estado_ecra == 'CONTAGEM': desenhar_tela_espera(mensagem_contagem)
