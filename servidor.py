@@ -1,8 +1,10 @@
+# servidor.py (VERSÃO FINAL COM BOTÃO DE ATUALIZAR)
 import socket
 import threading
 import json
 import time
 
+# --- ALTERAÇÃO 1: Escutar em todas as interfaces de rede ---
 HOST = '0.0.0.0' 
 PORTA_JOGO = 2004
 PORTA_DESCOBERTA = 2005
@@ -10,13 +12,29 @@ MENSAGEM_DESCOBERTA = "PONG_SERVER_DISCOVERY"
 LARGURA_TELA, ALTURA_TELA = 800, 600
 VELOCIDADE_BOLA_PPS = 300
 VELOCIDADE_PADDLE_PPS = 400
-TIMEOUT_SEGUNDOS = 7 
+TIMEOUT_SEGUNDOS = 30 
 PONTOS_PARA_VENCER = 5
 
 clientes = []
 sessoes_de_jogo = {}
 estados_de_jogo = {} 
 lock = threading.Lock()
+
+# --- NOVO: Função para obter o IP local da máquina ---
+def obter_ip_local():
+    """
+    Cria uma conexão temporária para descobrir o endereço IP local da máquina.
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # Não precisa ser alcançável; usado apenas para obter o IP
+        s.connect(('10.255.255.255', 1))
+        IP = s.getsockname()[0]
+    except Exception:
+        IP = '127.0.0.1' # Retorna localhost em caso de falha
+    finally:
+        s.close()
+    return IP
 
 def anunciar_servidor():
     sock_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -175,13 +193,11 @@ def gerenciar_cliente(conexao, endereco):
             while '\n' in buffer:
                 mensagem_completa, buffer = buffer.split('\n', 1)
                 dados = json.loads(mensagem_completa)
-
                 if dados['tipo'] == 'PEDIR_LISTA_JOGADORES':
                     with lock:
                         lista_jogadores = [{'apelido': ap, 'estado': st} for _, _, ap, st in clientes]
                     msg_lista = {'tipo': 'LISTA_JOGADORES', 'payload': lista_jogadores}
                     conexao.send((json.dumps(msg_lista) + '\n').encode('utf-8'))
-
                 elif dados['tipo'] == 'CONVIDAR_JOGADOR' or dados['tipo'] == 'RESPONDER_CONVITE':
                     if dados['tipo'] == 'CONVIDAR_JOGADOR':
                         apelido_alvo = dados['payload']
@@ -238,7 +254,15 @@ def iniciar_servidor_tcp():
         thread.start()
 
 if __name__ == "__main__":
+    ip_local = obter_ip_local()
     print("[INICIANDO] O servidor do jogo está iniciando...")
+    # --- ALTERAÇÃO 2: Imprime o IP local encontrado ---
+    print("="*40)
+    print(f"[INFO] O IP deste servidor na rede local é: {ip_local}")
+    print(f"[INFO] Os clientes devem se conectar a este IP.")
+    print("="*40)
+    
     thread_anuncio = threading.Thread(target=anunciar_servidor, daemon=True)
     thread_anuncio.start()
+    
     iniciar_servidor_tcp()
