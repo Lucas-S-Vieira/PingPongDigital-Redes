@@ -3,6 +3,7 @@ import socket
 import threading
 import json
 import time
+import netifaces
 
 # --- ALTERAÇÃO 1: Escutar em todas as interfaces de rede ---
 HOST = '0.0.0.0' 
@@ -39,18 +40,39 @@ def obter_ip_local():
 def anunciar_servidor():
     sock_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock_udp.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-    endereco_broadcast = ('<broadcast>', PORTA_DESCOBERTA)
     mensagem = json.dumps({
         "assinatura": MENSAGEM_DESCOBERTA,
         "porta_jogo": PORTA_JOGO
     }).encode('utf-8')
+
     while True:
+        enderecos_broadcast = []
         try:
-            sock_udp.sendto(mensagem, endereco_broadcast)
-            time.sleep(2)
+            for iface in netifaces.interfaces():
+                addrs = netifaces.ifaddresses(iface)
+                if socket.AF_INET in addrs:
+                    broadcast = addrs[socket.AF_INET][0].get('broadcast')
+                    if broadcast:
+                        enderecos_broadcast.append(broadcast)
+
+            # Remove duplicados
+            enderecos_broadcast = list(set(enderecos_broadcast))
+
+            if not enderecos_broadcast:
+                print("[AVISO] Nenhuma interface de rede com endereço de broadcast encontrada. Usando <broadcast> como fallback.")
+                enderecos_broadcast.append('<broadcast>')
+
+            for broadcast_ip in enderecos_broadcast:
+                try:
+                    sock_udp.sendto(mensagem, (broadcast_ip, PORTA_DESCOBERTA))
+                    # print(f"Anúncio enviado para {broadcast_ip}:{PORTA_DESCOBERTA}") # Para depuração
+                except Exception as e:
+                    print(f"[ERRO NO ANÚNCIO UDP para {broadcast_ip}] {e}")
+
         except Exception as e:
-            print(f"[ERRO NO ANÚNCIO UDP] {e}")
-            time.sleep(5)
+            print(f"[ERRO AO OBTER INTERFACES] {e}")
+
+        time.sleep(2)
 
 def transmitir_para_todos(dados):
     mensagem = json.dumps(dados) + '\n'
