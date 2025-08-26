@@ -25,13 +25,17 @@ O projeto foi desenvolvido em Python, utilizando a biblioteca Pygame para a inte
 
 ### Pré-requisitos
 
-Antes de começar, certifique-se de que tem o **Python 3** instalado no seu sistema.
+Antes de começar, certifique-se de que tem o Python e a biblioteca Pygame instalados no seu sistema.
 
-- **Instalação das dependências:**
-  Este projeto utiliza a biblioteca Pygame. Para instalar todas as dependências, execute o seguinte comando na raiz do projeto:
+- **Python 3:** [python.org](https://www.python.org/downloads/)
+- **Pygame:** Pode ser instalado via pip:
   ```bash
-  pip install -r requirements.txt
+  pip install pygame
   ```
+
+**Atenção para usuários Windows:**
+
+A biblioteca `netifaces`, uma das dependências do projeto, pode exigir a instalação das Ferramentas de Build do Microsoft C++ para ser compilada. Se você encontrar um erro relacionado ao `Microsoft Visual C++ 14.0`, instale as ferramentas a partir de [https://visualstudio.microsoft.com/visual-cpp-build-tools/](https://visualstudio.microsoft.com/visual-cpp-build-tools/) e tente instalar os requisitos novamente.
 
 ### Instruções de Execução
 
