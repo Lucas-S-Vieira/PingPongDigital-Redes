@@ -25,12 +25,12 @@ O projeto foi desenvolvido em Python, utilizando a biblioteca Pygame para a inte
 
 ### Pré-requisitos
 
-Antes de começar, certifique-se de que tem o Python e a biblioteca Pygame instalados no seu sistema.
+Antes de começar, certifique-se de que tem o **Python 3** instalado no seu sistema.
 
-- **Python 3:** [python.org](https://www.python.org/downloads/)
-- **Pygame:** Pode ser instalado via pip:
+- **Instalação das dependências:**
+  Este projeto utiliza a biblioteca Pygame. Para instalar todas as dependências, execute o seguinte comando na raiz do projeto:
   ```bash
-  pip install pygame
+  pip install -r requirements.txt
   ```
 
 ### Instruções de Execução
